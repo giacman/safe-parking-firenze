@@ -1,0 +1,20 @@
+# Telegram Bot
+python-telegram-bot==20.7
+
+# Lightweight geometry and calculations
+haversine==2.8.1
+
+# KML/XML parsing
+lxml==5.1.0
+
+# Configuration
+PyYAML==6.0.1
+
+# Scheduling
+APScheduler==3.10.4
+
+# HTTP requests for downloading data
+requests==2.31.0
+
+# Date/time utilities
+python-dateutil==2.8.2

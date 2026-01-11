@@ -1,0 +1,25 @@
+# Data Override Configuration
+# Use this to fix known errors in the Open Data
+
+# Exclude specific entries that have incorrect information
+exclude_entries:
+  # BORGO TEGOLAIO - Friday entry has wrong section name
+  # Friday should be "DA MAZZETTA A VIA DEL CAMPUCCIO" but data shows "DA MICHELOZZI A MAZZETTA"
+  # So we exclude the Friday entry for the "DA MICHELOZZI A MAZZETTA" section
+  - street_name: "BORGO TEGOLAIO"
+    section: "DA MICHELOZZI A MAZZETTA"
+    day_code: "VE"  # VE = Venerdì (Friday)
+    reason: "Wrong section name - Friday should be DA MAZZETTA A VIA DEL CAMPUCCIO"
+
+  # Add more exclusions here as you discover data errors
+  # Example:
+  # - street_name: "VIA EXAMPLE"
+  #   section: "DA A A B"
+  #   day_code: "LU"
+  #   reason: "Duplicate entry with wrong day"
+
+# Notes:
+# - street_name: Must match exactly (case-sensitive)
+# - section: Optional - if not specified, matches any section
+# - day_code: LU, MA, ME, GI, VE, SA, DO (Italian day abbreviations)
+# - reason: Optional - for documentation purposes

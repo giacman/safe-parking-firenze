@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Project specific
+config/config.yaml
+state/*.json
+data/*.kml
+data/*.kmz
+data/*.xml
+data/*.zip
+Pulizia_Strade/
+Pulizia_Strade.zip
+.claude/
+
+# Keep example and override files
+!config/config.example.yaml
+!config/overrides.example.yaml
+!config/overrides.yaml
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Keep example files
+!config/config.example.yaml

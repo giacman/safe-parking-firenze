@@ -1,0 +1,24 @@
+# Data Override Configuration - Example
+# Copy this to overrides.yaml and customize
+
+# Exclude specific entries that have incorrect information
+exclude_entries:
+  # Example: Exclude a street entry with wrong day
+  - street_name: "VIA EXAMPLE"
+    section: "DA A A B"  # Optional - only exclude this section
+    day_code: "LU"  # LU, MA, ME, GI, VE, SA, DO
+    reason: "Data error - wrong day listed"
+
+  # Example: Exclude any day for a street (regardless of section)
+  - street_name: "VIA ANOTHER EXAMPLE"
+    day_code: "VE"
+    reason: "Friday cleaning no longer happens"
+
+# Day codes (Italian abbreviations):
+# LU = Lunedì (Monday)
+# MA = Martedì (Tuesday)
+# ME = Mercoledì (Wednesday)
+# GI = Giovedì (Thursday)
+# VE = Venerdì (Friday)
+# SA = Sabato (Saturday)
+# DO = Domenica (Sunday)

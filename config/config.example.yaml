@@ -1,0 +1,36 @@
+# Telegram Bot Configuration
+telegram:
+  # Get your bot token from @BotFather on Telegram
+  bot_token: "YOUR_BOT_TOKEN_HERE"
+
+  # Your Telegram user ID (get it from @userinfobot)
+  # Only this user will be able to use the bot
+  allowed_user_id: 123456789
+
+# Florence Open Data
+open_data:
+  # KML file URL for street cleaning schedules (KMZ format - will be auto-extracted)
+  kml_url: "https://datigis.comune.fi.it/kml/pulizia_strade.kmz"
+
+  # How often to refresh the data (in hours)
+  refresh_interval_hours: 24
+
+# Parking Detection
+parking:
+  # Maximum distance in meters to consider a location on a street
+  max_distance_meters: 20
+
+  # Reminder settings
+  reminder_hours: [20, 8]  # Send reminders at 8 AM and 8 PM
+
+  # How many days in advance to start warning
+  warning_days_advance: 2
+
+# Favorite streets around home (optional)
+# These streets will be monitored even without parking there
+favorite_streets:
+  enabled: true
+  # List of street names or patterns to monitor
+  streets:
+    - "VIA ESEMPIO"
+    - "VIA CASA MIA"

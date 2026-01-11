@@ -1,0 +1,17 @@
+[Unit]
+Description=Safe Parking Florence Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=YOUR_USERNAME
+WorkingDirectory=/home/YOUR_USERNAME/safe-parking-firenze
+Environment="PATH=/home/YOUR_USERNAME/safe-parking-firenze/venv/bin"
+ExecStart=/home/YOUR_USERNAME/safe-parking-firenze/venv/bin/python main.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
