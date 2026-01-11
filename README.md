@@ -1,5 +1,7 @@
 # 🚗 Safe Parking Florence
 
+![Safe Parking Florence](amici.webp)
+
 A personal Telegram bot that prevents parking fines by monitoring street cleaning schedules in Florence, Italy using Open Data.
 
 ## 📋 Overview
