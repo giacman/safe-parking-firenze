@@ -345,6 +345,21 @@ journalctl -u safe-parking-bot -f
 sudo systemctl stop safe-parking-bot
 ```
 
+#### 8. Deploying Code Updates (from Git)
+
+When you push new code to `main`, update the bot on the VM with:
+
+```bash
+# On the VM
+gcloud compute ssh safe-parking-bot --zone=europe-west1-b
+
+cd ~/safe-parking-firenze
+git pull origin main
+
+sudo systemctl restart safe-parking-bot
+sudo systemctl status safe-parking-bot
+```
+
 ### Resource Usage on e2-micro
 
 The bot is designed to be extremely lightweight:
