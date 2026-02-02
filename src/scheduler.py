@@ -93,28 +93,26 @@ class ReminderScheduler:
             now = datetime.now()
             days_until = (next_cleaning.date() - now.date()).days
 
+            # Treat the day BEFORE cleaning as the last valid day.
+            # On the cleaning day itself (days_until == 0) it's already too late,
+            # so we clear the parking location and stop sending reminders.
+            if days_until <= 0:
+                # Cleaning day reached or passed, clear parking
+                logger.info("Cleaning day reached or passed, clearing parking location")
+                self.state_manager.clear_parking_location()
+                return
+
             # Check if we should send a reminder
             should_remind = False
             urgency_level = "info"
 
-            if days_until < 0:
-                # Cleaning was in the past, clear parking
-                logger.info("Cleaning date passed, clearing parking location")
-                self.state_manager.clear_parking_location()
-                return
-
-            elif days_until == 0:
-                # Today!
-                should_remind = True
-                urgency_level = "urgent"
-
-            elif days_until == 1:
-                # Tomorrow
+            if days_until == 1:
+                # Last day to move the car (cleaning is tonight / tomorrow morning)
                 should_remind = True
                 urgency_level = "high"
 
-            elif days_until <= self.warning_days_advance:
-                # Within warning window
+            elif 1 < days_until <= self.warning_days_advance:
+                # Within warning window (2, 3, ... days before)
                 should_remind = True
                 urgency_level = "medium"
 
@@ -136,21 +134,17 @@ class ReminderScheduler:
             street_name = parking.get('street_name', 'Unknown')
             next_cleaning_formatted = next_cleaning.strftime("%A, %d %B %Y at %H:%M")
 
-            if urgency_level == "urgent":
+            if urgency_level == "high":
+                # Last-day alert: cleaning is coming up very soon
                 message = (
-                    f"🚨 *URGENT REMINDER* 🚨\n\n"
-                    f"Street cleaning is *TODAY* on:\n"
-                    f"📍 {street_name}\n\n"
-                    f"⚠️ *MOVE YOUR CAR NOW!* ⚠️"
-                )
-            elif urgency_level == "high":
-                message = (
-                    f"⚠️ *IMPORTANT REMINDER* ⚠️\n\n"
-                    f"Street cleaning is *TOMORROW* on:\n"
-                    f"📍 {street_name}\n\n"
+                    f"⚠️ *LAST DAY TO MOVE YOUR CAR* ⚠️\n\n"
+                    f"Street cleaning is *TONIGHT / TOMORROW* on:\n"
+                    f"📍 {street_name}\n"
+                    f"📅 {next_cleaning_formatted}\n\n"
                     f"Don't forget to move your car!"
                 )
             else:
+                # Medium urgency: multiple days in advance
                 message = (
                     f"🔔 *Parking Reminder*\n\n"
                     f"Street cleaning in *{days_until} days* on:\n"
@@ -198,8 +192,9 @@ class ReminderScheduler:
 
                 days_until = (next_cleaning.date() - datetime.now().date()).days
 
-                # Only notify for cleaning within warning window
-                if 0 <= days_until <= self.warning_days_advance:
+                # Only notify for days where you can still move the car:
+                # 1..warning_days_advance days before cleaning.
+                if 1 <= days_until <= self.warning_days_advance:
                     upcoming_cleanings.append({
                         'name': street_name,
                         'date': next_cleaning,
@@ -218,16 +213,14 @@ class ReminderScheduler:
             message = "⭐ *Favorite Streets Cleaning Alert* ⭐\n\n"
 
             for cleaning in upcoming_cleanings:
-                if cleaning['days'] == 0:
-                    when = "🚨 *TODAY*"
-                elif cleaning['days'] == 1:
-                    when = "⚠️ *TOMORROW*"
+                if cleaning['days'] == 1:
+                    when = "⚠️ *TONIGHT / TOMORROW*"
                 else:
                     when = f"in {cleaning['days']} days"
 
                 message += (
                     f"📍 *{cleaning['name']}*\n"
-                    f"📅 {cleaning['date'].strftime('%A, %d %B')}\n"
+                    f"📅 {cleaning['date'].strftime('%A, %d %B %H:%M')}\n"
                     f"⏰ {when}\n"
                     f"🧹 {cleaning['description']}\n\n"
                 )
