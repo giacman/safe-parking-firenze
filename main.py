@@ -88,6 +88,7 @@ def main():
     telegram_config = config['telegram']
     open_data_config = config['open_data']
     parking_config = config.get('parking', {})
+    favorites_config = config.get('favorite_streets', {})
 
     bot_token = telegram_config['bot_token']
     allowed_user_id = telegram_config['allowed_user_id']
@@ -115,6 +116,15 @@ def main():
         logger.warning("Try running with internet connection or check the KML URL in config.")
     else:
         logger.info(f"Loaded {len(streets)} street cleaning schedules")
+
+    # Initialize favorite streets from config (for alerts around home)
+    if favorites_config.get('enabled'):
+        config_favorites = favorites_config.get('streets', [])
+        if config_favorites:
+            logger.info(f"Config favorite streets enabled: {len(config_favorites)} entries")
+            for name in config_favorites:
+                # Let StateManager handle de-duplication
+                state_manager.add_favorite_street(street_name=name)
 
     # Create bot instance
     bot = SafeParkingBot(

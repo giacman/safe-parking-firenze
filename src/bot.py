@@ -55,6 +55,10 @@ class SafeParkingBot:
         self.application.add_handler(CommandHandler("removefav", self.remove_favorite_command))
         self.application.add_handler(CommandHandler("refresh", self.refresh_data_command))
 
+        # Manual parking and reminders overview
+        self.application.add_handler(CommandHandler("park", self.park_command))
+        self.application.add_handler(CommandHandler("reminders", self.reminders_command))
+
         # Handle location messages
         self.application.add_handler(
             MessageHandler(filters.LOCATION & ~filters.COMMAND, self.handle_location)
@@ -93,10 +97,12 @@ class SafeParkingBot:
             "3. I'll remind you before the next cleaning\n\n"
             "*Commands:*\n"
             "/status - Check your current parking\n"
+            "/park <street> - Set parking manually\n"
             "/clear - Clear parking location\n"
             "/favorites - View favorite streets\n"
             "/addfav <street name> - Add favorite street\n"
             "/removefav <street name> - Remove favorite\n"
+            "/reminders - See active reminders\n"
             "/refresh - Update street cleaning data\n"
             "/help - Show this help message"
         )
@@ -329,6 +335,85 @@ class SafeParkingBot:
             "Send me your location when you park again."
         )
 
+    async def park_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /park command to set parking manually by street name"""
+        if not await self.check_user_authorized(update):
+            return
+
+        if not context.args:
+            await update.message.reply_text(
+                "Please provide a street name.\n"
+                "Example: /park VIA ROMA"
+            )
+            return
+
+        street_name_input = " ".join(context.args).upper()
+
+        # Try to find the street in KML data
+        street_data = self._find_street_by_name(street_name_input)
+
+        if street_data:
+            actual_name = street_data.cleaning_schedule.get('street_name', street_name_input)
+            schedule_formatted = self._format_schedule(street_data)
+            next_cleaning = street_data.get_next_cleaning_date()
+
+            # Save parking without relying on GPS coordinates
+            self.state_manager.save_parking_location(
+                latitude=0.0,
+                longitude=0.0,
+                street_name=actual_name,
+                street_description=schedule_formatted,
+                next_cleaning=next_cleaning.isoformat() if next_cleaning else None
+            )
+
+            if next_cleaning:
+                next_cleaning_str = next_cleaning.strftime("%A, %d %B %Y")
+                days_until = (next_cleaning.date() - datetime.now().date()).days
+
+                if days_until < 0:
+                    days_msg = "⚠️ *Cleaning was scheduled in the past!*"
+                elif days_until == 0:
+                    days_msg = "🚨 *TODAY!*"
+                elif days_until == 1:
+                    days_msg = "⚠️ *TOMORROW!*"
+                else:
+                    days_msg = f"in *{days_until} days*"
+
+                message = (
+                    f"✅ *Parking location set manually!*\n\n"
+                    f"📍 *Street:* {actual_name}\n"
+                    f"🧹 *Schedule:* {schedule_formatted}\n"
+                    f"📅 *Next cleaning:* {next_cleaning_str}\n"
+                    f"⏰ {days_msg}\n\n"
+                    f"I'll remind you before the cleaning!"
+                )
+            else:
+                message = (
+                    f"✅ *Parking location set manually!*\n\n"
+                    f"📍 *Street:* {actual_name}\n"
+                    f"🧹 *Schedule:* {schedule_formatted}\n\n"
+                    f"⚠️ Could not determine next cleaning date.\n"
+                    f"Please check the schedule manually."
+                )
+        else:
+            # Street not found in data – still save a generic entry so reminders can be managed
+            self.state_manager.save_parking_location(
+                latitude=0.0,
+                longitude=0.0,
+                street_name=street_name_input,
+                street_description="(manual entry, schedule unknown)",
+                next_cleaning=None
+            )
+
+            message = (
+                f"✅ *Parking location set manually!*\n\n"
+                f"📍 *Street:* {street_name_input}\n\n"
+                f"⚠️ Street not found in current data.\n"
+                f"Reminders based on schedule will not be available."
+            )
+
+        await update.message.reply_text(message, parse_mode='Markdown')
+
     async def favorites_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /favorites command"""
         if not await self.check_user_authorized(update):
@@ -432,6 +517,86 @@ class SafeParkingBot:
                 f"❌ *{street_name}* not found in favorites.",
                 parse_mode='Markdown'
             )
+
+    async def reminders_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /reminders command: show active reminders and how to cancel them"""
+        if not await self.check_user_authorized(update):
+            return
+
+        parking = self.state_manager.get_current_parking()
+        favorites = self.state_manager.get_favorite_streets()
+
+        lines: List[str] = []
+        lines.append("⏰ *Active Reminders Overview*\n")
+
+        # Current parking reminder
+        if parking:
+            street_name = parking.get('street_name', 'Unknown')
+            next_cleaning_str = parking.get('next_cleaning_date')
+
+            lines.append("🚗 *Current parking*")
+            lines.append(f"• Street: {street_name}")
+            lines.append(f"• Schedule: {parking.get('street_description', 'N/A')}")
+
+            if next_cleaning_str:
+                next_cleaning = datetime.fromisoformat(next_cleaning_str)
+                days_until = (next_cleaning.date() - datetime.now().date()).days
+                when_str = next_cleaning.strftime("%A, %d %B %Y %H:%M")
+
+                if days_until <= 0:
+                    status = "No more reminders (cleaning day reached or passed)"
+                elif days_until == 1:
+                    status = "Last-day reminder active (cleaning is tonight / tomorrow)"
+                else:
+                    status = f"Reminders active for the next {days_until} days"
+
+                lines.append(f"• Next cleaning: {when_str}")
+                lines.append(f"• Status: {status}")
+            else:
+                lines.append("• Next cleaning: Unknown (no schedule-based reminders)")
+
+            lines.append("• To stop these reminders: use /clear\n")
+        else:
+            lines.append("🚗 *Current parking*: none (no parking reminders active)\n")
+
+        # Favorite streets reminders
+        if favorites:
+            lines.append("⭐ *Favorite streets*")
+            lines.append(f"(Use /addfav and /removefav to manage this list)\n")
+
+            for fav in favorites:
+                name = fav['name']
+                street_data = self._find_street_by_name(name)
+
+                if street_data:
+                    next_cleaning = street_data.get_next_cleaning_date()
+                    if next_cleaning:
+                        days_until = (next_cleaning.date() - datetime.now().date()).days
+                        when_str = next_cleaning.strftime("%A, %d %B %Y %H:%M")
+
+                        if days_until <= 0:
+                            status = "No more alerts (cleaning day reached or passed)"
+                        elif 1 <= days_until <= 3:
+                            status = "Alerts active within the warning window"
+                        else:
+                            status = "No alerts until closer to the cleaning date"
+
+                        lines.append(f"• {name}")
+                        lines.append(f"  - Next cleaning: {when_str}")
+                        lines.append(f"  - Status: {status}")
+                    else:
+                        lines.append(f"• {name}")
+                        lines.append("  - Next cleaning: Unknown")
+                else:
+                    lines.append(f"• {name}")
+                    lines.append("  - Not found in current data (no schedule-based alerts)")
+
+            lines.append("\nTo stop alerts for a street: use /removefav <street name>.")
+        else:
+            lines.append("⭐ *Favorite streets*: none (no favorite alerts configured)")
+
+        message = "\n".join(lines)
+        await update.message.reply_text(message, parse_mode='Markdown')
 
     async def refresh_data_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /refresh command"""

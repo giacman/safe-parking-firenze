@@ -16,9 +16,10 @@ This bot helps you avoid parking tickets by:
 ## ✨ Features
 
 - **Location-based detection**: Send your GPS location to check if you're parked on a scheduled street
+- **Manual parking**: Use `/park <street>` to set parking even when GPS is inaccurate
 - **Smart reminders**: Receive notifications at 8 AM and 8 PM when cleaning is upcoming
-- **Favorite streets**: Monitor specific streets around your home
-- **Countdown alerts**: Get warnings 2 days before, 1 day before, and on the cleaning day
+- **Favorite streets**: Monitor specific streets around your home (from config and via `/addfav`)
+- **Countdown alerts**: Configurable window (e.g. 3 days) with a clear *last-day* warning and no alerts on the cleaning day itself
 - **Automatic data refresh**: Daily updates of street cleaning schedules
 - **JSON persistence**: No database needed, everything stored in simple JSON files
 - **Resource-efficient**: Designed to run on Google Cloud e2-micro (free tier)
@@ -377,7 +378,8 @@ Perfect fit for Google Cloud's e2-micro free tier (0.25-1 GB RAM, 1 vCPU).
 - `/start` - Initialize the bot and see the welcome message
 - `/help` - Display help information
 - `/status` - Check current parking status and next cleaning
-- `/clear` - Clear current parking location
+- `/park <street>` - Set parking manually by street name
+- `/clear` - Clear current parking location (and related reminders)
 - `/refresh` - Manually refresh street cleaning data
 
 ### Managing Favorites
@@ -396,13 +398,13 @@ Perfect fit for Google Cloud's e2-micro free tier (0.25-1 GB RAM, 1 vCPU).
 
 ### How Reminders Work
 
-The bot checks your parking status twice daily (8 AM and 8 PM) and sends reminders based on:
+The bot checks your parking status twice daily (8 AM and 8 PM) and sends reminders **only until the day before cleaning**:
 
-- **2+ days before**: Informational reminder
-- **1 day before**: Important warning
-- **On cleaning day**: Urgent alert
+- **N days before** (configurable via `warning_days_advance`, e.g. 3): countdown reminders ("in N days")
+- **1 day before**: *last-day* warning ("tonight / tomorrow"), last chance to move the car
+- **On the cleaning day**: no more reminders; the parking entry is automatically cleared once the day is reached/passed
 
-For favorite streets, the bot checks at noon and notifies you of any upcoming cleaning.
+For favorite streets, the bot checks at noon and sends a summary only when the next cleaning is within the same warning window (from N days down to 1 day, never on the cleaning day itself).
 
 ## 🔧 Configuration Options
 
