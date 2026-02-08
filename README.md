@@ -20,6 +20,8 @@ This bot helps you avoid parking tickets by:
 - **Smart reminders**: Receive notifications at 8 AM and 8 PM when cleaning is upcoming
 - **Favorite streets**: Monitor specific streets around your home (from config and via `/addfav`)
 - **Countdown alerts**: Configurable window (e.g. 3 days) with a clear *last-day* warning and no alerts on the cleaning day itself
+- **Google Maps integration**: One-tap access to open your parking location in Google Maps from any message
+- **Google Calendar integration**: Add the next cleaning date directly to your Google Calendar with a single tap
 - **Automatic data refresh**: Daily updates of street cleaning schedules
 - **JSON persistence**: No database needed, everything stored in simple JSON files
 - **Resource-efficient**: Designed to run on Google Cloud e2-micro (free tier)
@@ -391,10 +393,13 @@ Perfect fit for Google Cloud's e2-micro free tier (0.25-1 GB RAM, 1 vCPU).
 ### Parking Flow
 
 1. **Park your car**
-2. **Open Telegram** and send your location to the bot
+2. **Open Telegram** and send your location to the bot (or use `/park <street>` if GPS is inaccurate)
 3. **Bot responds** with street name, cleaning schedule, and next cleaning date
-4. **Receive reminders** automatically before cleaning day
-5. **Send `/clear`** when you move your car
+4. **Use the buttons** to:
+   - 📍 **Open in Google Maps** - Quickly navigate to your parking spot
+   - 📅 **Add to Google Calendar** - Save the cleaning date to your calendar
+5. **Receive reminders** automatically before cleaning day (reminders also include Maps and Calendar buttons)
+6. **Send `/clear`** when you move your car
 
 ### How Reminders Work
 
@@ -403,6 +408,10 @@ The bot checks your parking status twice daily (8 AM and 8 PM) and sends reminde
 - **N days before** (configurable via `warning_days_advance`, e.g. 3): countdown reminders ("in N days")
 - **1 day before**: *last-day* warning ("tonight / tomorrow"), last chance to move the car
 - **On the cleaning day**: no more reminders; the parking entry is automatically cleared once the day is reached/passed
+
+All reminder messages include buttons to:
+- 📍 **Open in Google Maps** - Navigate directly to your parking location
+- 📅 **Add to Google Calendar** - Add the cleaning event to your calendar
 
 For favorite streets, the bot checks at noon and sends a summary only when the next cleaning is within the same warning window (from N days down to 1 day, never on the cleaning day itself).
 

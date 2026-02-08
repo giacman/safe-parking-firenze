@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional, List
 
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -19,6 +19,7 @@ from telegram.ext import (
 from src.kml_parser import KMLParser, StreetCleaningData
 from src.geometry import is_point_near_street
 from src.state_manager import StateManager
+from src.links import build_google_maps_url, build_google_calendar_url
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,9 @@ class SafeParkingBot:
             "1. Send me your location when you park\n"
             "2. I'll check if you're on a street with cleaning schedule\n"
             "3. I'll remind you before the next cleaning\n\n"
+            "*Features:*\n"
+            "• 📍 Open parking location in Google Maps\n"
+            "• 📅 Add cleaning schedule to Google Calendar\n\n"
             "*Commands:*\n"
             "/status - Check your current parking\n"
             "/park <street> - Set parking manually\n"
@@ -192,6 +196,25 @@ class SafeParkingBot:
             if days_until <= 1:
                 message += "\n\n⚠️ *Please move your car soon!*"
 
+            # Build inline keyboard with Google Maps and Calendar buttons
+            keyboard_buttons = []
+            
+            # Google Maps button
+            parking_dict = {
+                'latitude': latitude,
+                'longitude': longitude,
+                'street_name': street_name
+            }
+            maps_url = build_google_maps_url(parking_dict)
+            if maps_url:
+                keyboard_buttons.append([InlineKeyboardButton("📍 Open in Google Maps", url=maps_url)])
+            
+            # Google Calendar button
+            calendar_url = build_google_calendar_url(street_name, next_cleaning, schedule_formatted)
+            keyboard_buttons.append([InlineKeyboardButton("📅 Add to Google Calendar", url=calendar_url)])
+            
+            reply_markup = InlineKeyboardMarkup(keyboard_buttons) if keyboard_buttons else None
+
         else:
             # Save without next cleaning date
             self.state_manager.save_parking_location(
@@ -211,7 +234,20 @@ class SafeParkingBot:
                 f"Please check the schedule manually."
             )
 
-        await update.message.reply_text(message, parse_mode='Markdown')
+            # Build inline keyboard with Google Maps button only (no calendar without next cleaning date)
+            keyboard_buttons = []
+            parking_dict = {
+                'latitude': latitude,
+                'longitude': longitude,
+                'street_name': street_name
+            }
+            maps_url = build_google_maps_url(parking_dict)
+            if maps_url:
+                keyboard_buttons.append([InlineKeyboardButton("📍 Open in Google Maps", url=maps_url)])
+            
+            reply_markup = InlineKeyboardMarkup(keyboard_buttons) if keyboard_buttons else None
+
+        await update.message.reply_text(message, parse_mode='Markdown', reply_markup=reply_markup)
 
     def _format_schedule(self, street_data) -> str:
         """Format cleaning schedule for display"""
@@ -319,10 +355,29 @@ class SafeParkingBot:
                 f"📅 *Next cleaning:* {next_cleaning_formatted}\n"
                 f"⏰ {days_msg}"
             )
+            
+            # Build inline keyboard with Google Maps and Calendar buttons
+            keyboard_buttons = []
+            maps_url = build_google_maps_url(parking)
+            if maps_url:
+                keyboard_buttons.append([InlineKeyboardButton("📍 Open in Google Maps", url=maps_url)])
+            
+            calendar_url = build_google_calendar_url(street_name, next_cleaning, parking.get('street_description', ''))
+            keyboard_buttons.append([InlineKeyboardButton("📅 Add to Google Calendar", url=calendar_url)])
+            
+            reply_markup = InlineKeyboardMarkup(keyboard_buttons) if keyboard_buttons else None
         else:
             message += "📅 *Next cleaning:* Unknown"
+            
+            # Build inline keyboard with Google Maps button only
+            keyboard_buttons = []
+            maps_url = build_google_maps_url(parking)
+            if maps_url:
+                keyboard_buttons.append([InlineKeyboardButton("📍 Open in Google Maps", url=maps_url)])
+            
+            reply_markup = InlineKeyboardMarkup(keyboard_buttons) if keyboard_buttons else None
 
-        await update.message.reply_text(message, parse_mode='Markdown')
+        await update.message.reply_text(message, parse_mode='Markdown', reply_markup=reply_markup)
 
     async def clear_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /clear command"""
@@ -387,6 +442,22 @@ class SafeParkingBot:
                     f"⏰ {days_msg}\n\n"
                     f"I'll remind you before the cleaning!"
                 )
+                
+                # Build inline keyboard with Google Maps and Calendar buttons
+                keyboard_buttons = []
+                parking_dict = {
+                    'latitude': 0.0,
+                    'longitude': 0.0,
+                    'street_name': actual_name
+                }
+                maps_url = build_google_maps_url(parking_dict)
+                if maps_url:
+                    keyboard_buttons.append([InlineKeyboardButton("📍 Open in Google Maps", url=maps_url)])
+                
+                calendar_url = build_google_calendar_url(actual_name, next_cleaning, schedule_formatted)
+                keyboard_buttons.append([InlineKeyboardButton("📅 Add to Google Calendar", url=calendar_url)])
+                
+                reply_markup = InlineKeyboardMarkup(keyboard_buttons) if keyboard_buttons else None
             else:
                 message = (
                     f"✅ *Parking location set manually!*\n\n"
@@ -395,6 +466,19 @@ class SafeParkingBot:
                     f"⚠️ Could not determine next cleaning date.\n"
                     f"Please check the schedule manually."
                 )
+                
+                # Build inline keyboard with Google Maps button only
+                keyboard_buttons = []
+                parking_dict = {
+                    'latitude': 0.0,
+                    'longitude': 0.0,
+                    'street_name': actual_name
+                }
+                maps_url = build_google_maps_url(parking_dict)
+                if maps_url:
+                    keyboard_buttons.append([InlineKeyboardButton("📍 Open in Google Maps", url=maps_url)])
+                
+                reply_markup = InlineKeyboardMarkup(keyboard_buttons) if keyboard_buttons else None
         else:
             # Street not found in data – still save a generic entry so reminders can be managed
             self.state_manager.save_parking_location(
@@ -411,8 +495,21 @@ class SafeParkingBot:
                 f"⚠️ Street not found in current data.\n"
                 f"Reminders based on schedule will not be available."
             )
+            
+            # Build inline keyboard with Google Maps button only
+            keyboard_buttons = []
+            parking_dict = {
+                'latitude': 0.0,
+                'longitude': 0.0,
+                'street_name': street_name_input
+            }
+            maps_url = build_google_maps_url(parking_dict)
+            if maps_url:
+                keyboard_buttons.append([InlineKeyboardButton("📍 Open in Google Maps", url=maps_url)])
+            
+            reply_markup = InlineKeyboardMarkup(keyboard_buttons) if keyboard_buttons else None
 
-        await update.message.reply_text(message, parse_mode='Markdown')
+        await update.message.reply_text(message, parse_mode='Markdown', reply_markup=reply_markup)
 
     async def favorites_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /favorites command"""
@@ -652,13 +749,14 @@ class SafeParkingBot:
         # No dates found, return first match
         return matching_streets[0]
 
-    async def send_reminder(self, chat_id: int, message: str):
+    async def send_reminder(self, chat_id: int, message: str, reply_markup=None):
         """Send a reminder message to the user"""
         if self.application:
             await self.application.bot.send_message(
                 chat_id=chat_id,
                 text=message,
-                parse_mode='Markdown'
+                parse_mode='Markdown',
+                reply_markup=reply_markup
             )
 
     def run(self):

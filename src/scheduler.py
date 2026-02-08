@@ -12,6 +12,8 @@ from apscheduler.triggers.cron import CronTrigger
 
 from src.state_manager import StateManager
 from src.kml_parser import KMLParser
+from src.links import build_google_maps_url, build_google_calendar_url
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +155,22 @@ class ReminderScheduler:
                     f"Remember to move your car!"
                 )
 
-            await self.bot.send_reminder(self.allowed_user_id, message)
+            # Build inline keyboard with Google Maps and Calendar buttons
+            keyboard_buttons = []
+            maps_url = build_google_maps_url(parking)
+            if maps_url:
+                keyboard_buttons.append([InlineKeyboardButton("📍 Open in Google Maps", url=maps_url)])
+            
+            calendar_url = build_google_calendar_url(
+                street_name,
+                next_cleaning,
+                parking.get('street_description', '')
+            )
+            keyboard_buttons.append([InlineKeyboardButton("📅 Add to Google Calendar", url=calendar_url)])
+            
+            reply_markup = InlineKeyboardMarkup(keyboard_buttons) if keyboard_buttons else None
+
+            await self.bot.send_reminder(self.allowed_user_id, message, reply_markup=reply_markup)
 
             # Update last reminded timestamp
             self.state_manager.update_last_reminded()
