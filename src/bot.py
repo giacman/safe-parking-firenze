@@ -59,6 +59,7 @@ class SafeParkingBot:
         # Manual parking and reminders overview
         self.application.add_handler(CommandHandler("park", self.park_command))
         self.application.add_handler(CommandHandler("reminders", self.reminders_command))
+        self.application.add_handler(CommandHandler("countdown", self.countdown_command))
 
         # Handle location messages
         self.application.add_handler(
@@ -107,6 +108,7 @@ class SafeParkingBot:
             "/addfav <street name> - Add favorite street\n"
             "/removefav <street name> - Remove favorite\n"
             "/reminders - See active reminders\n"
+            "/countdown - Toggle countdown display\n"
             "/refresh - Update street cleaning data\n"
             "/help - Show this help message"
         )
@@ -694,6 +696,55 @@ class SafeParkingBot:
 
         message = "\n".join(lines)
         await update.message.reply_text(message, parse_mode='Markdown')
+
+    async def countdown_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /countdown command to toggle countdown display"""
+        if not await self.check_user_authorized(update):
+            return
+
+        current_status = self.state_manager.is_countdown_enabled()
+        
+        if context.args and len(context.args) > 0:
+            # User provided argument: on/off
+            arg = context.args[0].lower()
+            if arg in ['on', 'enable', 'yes', 'true', '1']:
+                self.state_manager.set_countdown_enabled(True)
+                await update.message.reply_text(
+                    "✅ *Contatore giorni abilitato*\n\n"
+                    "Il bot invierà un messaggio giornaliero alle 20:00 con il contatore dei giorni rimanenti.",
+                    parse_mode='Markdown'
+                )
+            elif arg in ['off', 'disable', 'no', 'false', '0']:
+                self.state_manager.set_countdown_enabled(False)
+                await update.message.reply_text(
+                    "✅ *Contatore giorni disabilitato*\n\n"
+                    "I messaggi giornalieri con il contatore sono stati disabilitati.",
+                    parse_mode='Markdown'
+                )
+            else:
+                await update.message.reply_text(
+                    "Uso: /countdown on|off\n\n"
+                    f"Stato attuale: {'abilitato' if current_status else 'disabilitato'}"
+                )
+        else:
+            # Toggle current status
+            new_status = not current_status
+            self.state_manager.set_countdown_enabled(new_status)
+            
+            status_text = "abilitato" if new_status else "disabilitato"
+            status_text = "abilitato" if new_status else "disabilitato"
+            description = (
+                "Il bot invierà un messaggio giornaliero alle 20:00 con il contatore dei giorni rimanenti."
+                if new_status else
+                "I messaggi giornalieri con il contatore sono stati disabilitati."
+            )
+            
+            await update.message.reply_text(
+                f"✅ *Contatore giorni {status_text}*\n\n"
+                f"{description}\n\n"
+                f"Usa /countdown on o /countdown off per cambiarlo.",
+                parse_mode='Markdown'
+            )
 
     async def refresh_data_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /refresh command"""

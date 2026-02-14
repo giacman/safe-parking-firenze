@@ -382,6 +382,7 @@ Perfect fit for Google Cloud's e2-micro free tier (0.25-1 GB RAM, 1 vCPU).
 - `/status` - Check current parking status and next cleaning
 - `/park <street>` - Set parking manually by street name
 - `/clear` - Clear current parking location (and related reminders)
+- `/countdown` - Toggle countdown display (shows days remaining until cleaning)
 - `/refresh` - Manually refresh street cleaning data
 
 ### Managing Favorites
@@ -412,6 +413,8 @@ The bot checks your parking status twice daily (8 AM and 8 PM) and sends reminde
 All reminder messages include buttons to:
 - 📍 **Open in Google Maps** - Navigate directly to your parking location
 - 📅 **Add to Google Calendar** - Add the cleaning event to your calendar
+
+**Daily Countdown Messages**: Use `/countdown` to enable/disable daily countdown messages. When enabled, you'll receive a message every day at 8 PM showing how many days remain until the next cleaning (e.g., "⏳ 3 giorni rimasti"). Disabled by default.
 
 For favorite streets, the bot checks at noon and sends a summary only when the next cleaning is within the same warning window (from N days down to 1 day, never on the cleaning day itself).
 

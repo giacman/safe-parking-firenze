@@ -47,7 +47,8 @@ class StateManager:
         if not os.path.exists(self.settings_file):
             self._write_json(self.settings_file, {
                 "last_kml_update": None,
-                "notifications_enabled": True
+                "notifications_enabled": True,
+                "countdown_enabled": False
             })
 
     def _read_json(self, file_path: str) -> Dict:
@@ -226,3 +227,12 @@ class StateManager:
     def set_notifications_enabled(self, enabled: bool):
         """Enable or disable notifications"""
         self.update_setting("notifications_enabled", enabled)
+
+    def is_countdown_enabled(self) -> bool:
+        """Check if countdown display is enabled"""
+        data = self._read_json(self.settings_file)
+        return data.get("countdown_enabled", False)
+
+    def set_countdown_enabled(self, enabled: bool):
+        """Enable or disable countdown display"""
+        self.update_setting("countdown_enabled", enabled)

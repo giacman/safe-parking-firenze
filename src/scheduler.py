@@ -66,6 +66,14 @@ class ReminderScheduler:
             name='Check favorite streets'
         )
 
+        # Daily countdown message (if enabled by user)
+        self.scheduler.add_job(
+            self.send_daily_countdown,
+            CronTrigger(hour=20, minute=0),  # 8 PM daily
+            id='daily_countdown',
+            name='Send daily countdown message'
+        )
+
         self.scheduler.start()
         logger.info(f"Scheduler started with reminders at hours: {self.reminder_hours}")
 
@@ -154,7 +162,7 @@ class ReminderScheduler:
                     f"📅 {next_cleaning_formatted}\n\n"
                     f"Remember to move your car!"
                 )
-
+            
             # Build inline keyboard with Google Maps and Calendar buttons
             keyboard_buttons = []
             maps_url = build_google_maps_url(parking)
@@ -249,6 +257,74 @@ class ReminderScheduler:
         except Exception as e:
             logger.error(f"Error in check_favorite_streets: {e}", exc_info=True)
 
+    async def send_daily_countdown(self):
+        """Send daily countdown message if countdown is enabled"""
+        try:
+            # Only send if countdown is enabled
+            if not self.state_manager.is_countdown_enabled():
+                return
+
+            parking = self.state_manager.get_current_parking()
+
+            if not parking:
+                return
+
+            next_cleaning_str = parking.get('next_cleaning_date')
+
+            if not next_cleaning_str:
+                return
+
+            next_cleaning = datetime.fromisoformat(next_cleaning_str)
+            now = datetime.now()
+            days_until = (next_cleaning.date() - now.date()).days
+
+            # Only send countdown if cleaning is in the future
+            if days_until <= 0:
+                return
+
+            street_name = parking.get('street_name', 'Unknown')
+            next_cleaning_formatted = next_cleaning.strftime("%A, %d %B %Y")
+
+            # Build countdown message
+            if days_until == 1:
+                countdown_msg = "⏳ *1 giorno rimasto*"
+                urgency_emoji = "⚠️"
+            else:
+                countdown_msg = f"⏳ *{days_until} giorni rimasti*"
+                urgency_emoji = "📅"
+
+            message = (
+                f"{urgency_emoji} *Countdown Pulizia Strade*\n\n"
+                f"📍 {street_name}\n"
+                f"📅 Prossima pulizia: {next_cleaning_formatted}\n\n"
+                f"{countdown_msg}"
+            )
+
+            # Build inline keyboard with Google Maps and Calendar buttons
+            keyboard_buttons = []
+            from src.links import build_google_maps_url, build_google_calendar_url
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+            maps_url = build_google_maps_url(parking)
+            if maps_url:
+                keyboard_buttons.append([InlineKeyboardButton("📍 Open in Google Maps", url=maps_url)])
+
+            calendar_url = build_google_calendar_url(
+                street_name,
+                next_cleaning,
+                parking.get('street_description', '')
+            )
+            keyboard_buttons.append([InlineKeyboardButton("📅 Add to Google Calendar", url=calendar_url)])
+
+            reply_markup = InlineKeyboardMarkup(keyboard_buttons) if keyboard_buttons else None
+
+            await self.bot.send_reminder(self.allowed_user_id, message, reply_markup=reply_markup)
+
+            logger.info(f"Sent daily countdown for {street_name} ({days_until} days remaining)")
+
+        except Exception as e:
+            logger.error(f"Error in send_daily_countdown: {e}", exc_info=True)
+
     async def refresh_kml_data(self):
         """Refresh KML data from the open data portal"""
         try:
@@ -258,24 +334,18 @@ class ReminderScheduler:
             self.state_manager.set_last_kml_update()
 
             logger.info(f"KML data refreshed: {len(streets)} streets loaded")
-
-            # Send notification to user
-            message = (
-                f"🔄 *Data Update*\n\n"
-                f"Street cleaning data has been refreshed.\n"
-                f"📊 {len(streets)} streets loaded."
-            )
-
-            await self.bot.send_reminder(self.allowed_user_id, message)
+            # Don't notify user on successful refresh - data source is static
+            # Only notify on errors (see except block below)
 
         except Exception as e:
             logger.error(f"Error refreshing KML data: {e}", exc_info=True)
 
-            # Notify user of error
+            # Notify user of error (only when refresh fails)
             error_message = (
                 f"⚠️ *Data Update Failed*\n\n"
                 f"Could not refresh street cleaning data.\n"
-                f"Error: {str(e)}"
+                f"Error: {str(e)}\n\n"
+                f"The bot will continue using cached data."
             )
 
             try:
