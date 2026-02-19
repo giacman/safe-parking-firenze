@@ -128,58 +128,72 @@ class StreetCleaningData:
         even_days = self.cleaning_schedule.get('even_days', False)
         odd_days = self.cleaning_schedule.get('odd_days', False)
 
-        # If weekly cleaning, find next occurrence of that weekday
-        if weekly or not weeks:
+        # Parse the cleaning start time from the schedule
+        time_start = self.cleaning_schedule.get('time_start')
+        start_hour, start_minute = 0, 0
+        if time_start:
+            try:
+                parts = time_start.split(':')
+                start_hour = int(parts[0])
+                start_minute = int(parts[1]) if len(parts) > 1 else 0
+            except (ValueError, IndexError):
+                pass
+
+        # Use date-only comparison so time of day doesn't affect future/past check
+        today = from_date.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        # Prioritize specific weeks over the weekly flag.
+        # Some KML entries have both settimanale=1 and specific weeks set;
+        # in that case, the specific weeks are what matter.
+        if weeks:
+            # Specific weeks of the month
+            candidates = []
+
+            for month_offset in range(0, 3):
+                if from_date.month + month_offset <= 12:
+                    check_month = from_date.month + month_offset
+                    check_year = from_date.year
+                else:
+                    check_month = (from_date.month + month_offset) % 12
+                    if check_month == 0:
+                        check_month = 12
+                    check_year = from_date.year + ((from_date.month + month_offset - 1) // 12)
+
+                first_of_month = datetime(check_year, check_month, 1)
+
+                for week_num in weeks:
+                    cleaning_date = self._find_nth_weekday(first_of_month, target_day, week_num)
+                    if cleaning_date and cleaning_date >= today:
+                        day_of_month = cleaning_date.day
+
+                        if even_days and day_of_month % 2 != 0:
+                            continue
+                        if odd_days and day_of_month % 2 == 0:
+                            continue
+
+                        # Set the actual cleaning time
+                        cleaning_date = cleaning_date.replace(hour=start_hour, minute=start_minute)
+                        candidates.append(cleaning_date)
+
+            if candidates:
+                return min(candidates)
+
+            return None
+        else:
+            # Weekly cleaning (every week)
             days_ahead = (target_day - from_date.weekday()) % 7
             if days_ahead == 0:
-                days_ahead = 7  # If today, schedule for next week
-            next_date = from_date + timedelta(days=days_ahead)
+                days_ahead = 7
+            next_date = today + timedelta(days=days_ahead)
 
-            # Check even/odd constraint
             if even_days and next_date.day % 2 != 0:
-                # Need even day, but got odd - try next week
                 next_date = next_date + timedelta(days=7)
             elif odd_days and next_date.day % 2 == 0:
-                # Need odd day, but got even - try next week
                 next_date = next_date + timedelta(days=7)
 
+            # Set the actual cleaning time
+            next_date = next_date.replace(hour=start_hour, minute=start_minute)
             return next_date
-
-        # For specific weeks of the month, find all possibilities in current and next month
-        candidates = []
-
-        for month_offset in range(0, 3):  # Check current month and next 2 months
-            if from_date.month + month_offset <= 12:
-                check_month = from_date.month + month_offset
-                check_year = from_date.year
-            else:
-                check_month = (from_date.month + month_offset) % 12
-                if check_month == 0:
-                    check_month = 12
-                check_year = from_date.year + ((from_date.month + month_offset - 1) // 12)
-
-            first_of_month = datetime(check_year, check_month, 1)
-
-            # Find all occurrences of target day in this month
-            for week_num in weeks:
-                cleaning_date = self._find_nth_weekday(first_of_month, target_day, week_num)
-                if cleaning_date and cleaning_date > from_date:
-                    # Check even/odd day constraint
-                    day_of_month = cleaning_date.day
-
-                    # Skip if doesn't match even/odd requirement
-                    if even_days and day_of_month % 2 != 0:
-                        continue  # Need even, got odd
-                    if odd_days and day_of_month % 2 == 0:
-                        continue  # Need odd, got even
-
-                    candidates.append(cleaning_date)
-
-        # Return the earliest future date
-        if candidates:
-            return min(candidates)
-
-        return None
 
     def _find_nth_weekday(self, start_date: datetime, weekday: int, n: int) -> Optional[datetime]:
         """Find the nth occurrence of a weekday in the month starting from start_date"""

@@ -283,7 +283,7 @@ class SafeParkingBot:
 
         # Section
         if sched.get('section'):
-            parts.append(f"[{sched['section']}]")
+            parts.append(f"({sched['section']})")
 
         return " ".join(parts) if parts else "Schedule unknown"
 
@@ -406,13 +406,27 @@ class SafeParkingBot:
 
         street_name_input = " ".join(context.args).upper()
 
-        # Try to find the street in KML data
-        street_data = self._find_street_by_name(street_name_input)
+        # Try to find all street entries (for streets with multiple cleaning days)
+        all_street_entries = self._find_all_streets_by_name(street_name_input)
 
-        if street_data:
+        if all_street_entries:
+            # Use the first entry for the street name
+            street_data = all_street_entries[0]
             actual_name = street_data.cleaning_schedule.get('street_name', street_name_input)
-            schedule_formatted = self._format_schedule(street_data)
-            next_cleaning = street_data.get_next_cleaning_date()
+            
+            # Format schedule - if multiple entries, show combined schedule
+            if len(all_street_entries) > 1:
+                schedule_formatted = self._format_schedule_all_days(all_street_entries)
+                # Get earliest next cleaning from all entries
+                all_dates = []
+                for entry in all_street_entries:
+                    next_date = entry.get_next_cleaning_date()
+                    if next_date:
+                        all_dates.append(next_date)
+                next_cleaning = min(all_dates) if all_dates else None
+            else:
+                schedule_formatted = self._format_schedule(street_data)
+                next_cleaning = street_data.get_next_cleaning_date()
 
             # Save parking without relying on GPS coordinates
             self.state_manager.save_parking_location(
@@ -530,14 +544,29 @@ class SafeParkingBot:
         message = "⭐ *Your Favorite Streets:*\n\n"
 
         for i, fav in enumerate(favorites, 1):
-            # Find the street in KML data to get next cleaning
-            street_data = self._find_street_by_name(fav['name'])
+            # Find all street entries (for streets with multiple cleaning days)
+            all_street_entries = self._find_all_streets_by_name(fav['name'])
 
-            if street_data:
-                next_cleaning = street_data.get_next_cleaning_date()
-                if next_cleaning:
+            if all_street_entries:
+                # Get the earliest next cleaning from all entries
+                all_dates = []
+                for street_entry in all_street_entries:
+                    next_date = street_entry.get_next_cleaning_date()
+                    if next_date:
+                        all_dates.append(next_date)
+                
+                if all_dates:
+                    next_cleaning = min(all_dates)
                     days_until = (next_cleaning.date() - datetime.now().date()).days
                     cleaning_info = f"Next: {next_cleaning.strftime('%d/%m')} ({days_until}d)"
+                    
+                    # Show schedule - if multiple entries, show combined schedule
+                    if len(all_street_entries) > 1:
+                        schedule_info = self._format_schedule_all_days(all_street_entries)
+                        cleaning_info += f"\n   Schedule: {schedule_info}"
+                    else:
+                        schedule_info = self._format_schedule(all_street_entries[0])
+                        cleaning_info += f"\n   Schedule: {schedule_info}"
                 else:
                     cleaning_info = "Schedule unknown"
             else:
@@ -563,12 +592,19 @@ class SafeParkingBot:
 
         street_name = " ".join(context.args).upper()
 
-        # Check if street exists in data
-        street_data = self._find_street_by_name(street_name)
+        # Check if street exists in data (find all entries for streets with multiple cleaning days)
+        all_street_entries = self._find_all_streets_by_name(street_name)
 
-        if street_data:
+        if all_street_entries:
+            # Use the first entry for the street name
+            street_data = all_street_entries[0]
             actual_name = street_data.cleaning_schedule.get('street_name', street_name)
-            schedule_formatted = self._format_schedule(street_data)
+            
+            # Format schedule - if multiple entries, show combined schedule
+            if len(all_street_entries) > 1:
+                schedule_formatted = self._format_schedule_all_days(all_street_entries)
+            else:
+                schedule_formatted = self._format_schedule(street_data)
 
             self.state_manager.add_favorite_street(
                 street_name=actual_name,
@@ -799,6 +835,56 @@ class SafeParkingBot:
 
         # No dates found, return first match
         return matching_streets[0]
+    
+    def _find_all_streets_by_name(self, street_name: str) -> List[StreetCleaningData]:
+        """Find all street entries matching a name (for streets with multiple cleaning days)"""
+        street_name_upper = street_name.upper()
+        matching_streets = []
+        for street in self.kml_parser.streets:
+            actual_name = street.cleaning_schedule.get('street_name', '')
+            if actual_name and street_name_upper in actual_name.upper():
+                matching_streets.append(street)
+        return matching_streets
+    
+    def _format_schedule_all_days(self, streets: List[StreetCleaningData]) -> str:
+        """Format schedule for a street that has multiple cleaning days"""
+        if not streets:
+            return "Schedule unknown"
+        
+        if len(streets) == 1:
+            return self._format_schedule(streets[0])
+        
+        # Multiple schedules - format each one
+        day_names_it = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']
+        schedules = []
+        
+        for street in streets:
+            sched = street.cleaning_schedule
+            parts = []
+            
+            # Day of week
+            if sched.get('day_of_week') is not None:
+                day_name = day_names_it[sched['day_of_week']]
+                parts.append(day_name)
+            
+            # Weeks
+            weeks = sched.get('weeks', [])
+            if weeks and len(weeks) < 5:
+                week_str = ", ".join([f"{w}°" for w in weeks])
+                parts.append(f"settimana {week_str}")
+            
+            # Time
+            if sched.get('time_start') and sched.get('time_end'):
+                parts.append(f"{sched['time_start']}-{sched['time_end']}")
+            
+            # Section
+            if sched.get('section'):
+                parts.append(f"({sched['section']})")
+            
+            if parts:
+                schedules.append(" ".join(parts))
+        
+        return " | ".join(schedules) if schedules else "Schedule unknown"
 
     async def send_reminder(self, chat_id: int, message: str, reply_markup=None):
         """Send a reminder message to the user"""

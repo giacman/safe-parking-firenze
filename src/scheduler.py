@@ -18,6 +18,13 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 logger = logging.getLogger(__name__)
 
 
+def _escape_markdown(text: str) -> str:
+    """Escape Telegram Markdown special characters in dynamic text"""
+    for char in ('_', '*', '`', '['):
+        text = text.replace(char, '\\' + char)
+    return text
+
+
 class ReminderScheduler:
     """Manages scheduled tasks for reminders and data updates"""
 
@@ -142,23 +149,22 @@ class ReminderScheduler:
 
             # Prepare and send reminder message
             street_name = parking.get('street_name', 'Unknown')
+            safe_street = _escape_markdown(street_name)
             next_cleaning_formatted = next_cleaning.strftime("%A, %d %B %Y at %H:%M")
 
             if urgency_level == "high":
-                # Last-day alert: cleaning is coming up very soon
                 message = (
                     f"⚠️ *LAST DAY TO MOVE YOUR CAR* ⚠️\n\n"
                     f"Street cleaning is *TONIGHT / TOMORROW* on:\n"
-                    f"📍 {street_name}\n"
+                    f"📍 {safe_street}\n"
                     f"📅 {next_cleaning_formatted}\n\n"
                     f"Don't forget to move your car!"
                 )
             else:
-                # Medium urgency: multiple days in advance
                 message = (
                     f"🔔 *Parking Reminder*\n\n"
                     f"Street cleaning in *{days_until} days* on:\n"
-                    f"📍 {street_name}\n"
+                    f"📍 {safe_street}\n"
                     f"📅 {next_cleaning_formatted}\n\n"
                     f"Remember to move your car!"
                 )
@@ -204,27 +210,44 @@ class ReminderScheduler:
             for favorite in favorites:
                 street_name = favorite['name']
 
-                # Find the street in KML data
-                street_data = self._find_street_by_name(street_name)
+                # Find all street entries (for streets with multiple cleaning days)
+                all_street_entries = self._find_all_streets_by_name(street_name)
 
-                if not street_data:
+                if not all_street_entries:
                     continue
 
-                next_cleaning = street_data.get_next_cleaning_date()
+                # Get the earliest next cleaning from all entries
+                all_dates = []
+                for street_entry in all_street_entries:
+                    next_date = street_entry.get_next_cleaning_date()
+                    if next_date:
+                        all_dates.append(next_date)
 
-                if not next_cleaning:
+                if not all_dates:
                     continue
 
-                days_until = (next_cleaning.date() - datetime.now().date()).days
+                next_cleaning = min(all_dates)
 
+                # Calculate days until cleaning
+                # Important: if cleaning is at 00:00, we need to account for the fact that
+                # it's effectively "tonight" from the perspective of the day before
+                now = datetime.now()
+                cleaning_date_only = next_cleaning.date()
+                today_date = now.date()
+                days_until = (cleaning_date_only - today_date).days
+                
+                # Log for debugging
+                logger.info(f"Favorite street {street_name}: next_cleaning={next_cleaning}, days_until={days_until}, warning_window={self.warning_days_advance}")
+                
                 # Only notify for days where you can still move the car:
                 # 1..warning_days_advance days before cleaning.
                 if 1 <= days_until <= self.warning_days_advance:
+                    description = self._format_favorite_description(all_street_entries)
                     upcoming_cleanings.append({
                         'name': street_name,
                         'date': next_cleaning,
                         'days': days_until,
-                        'description': street_data.description
+                        'description': description
                     })
 
             if not upcoming_cleanings:
@@ -243,11 +266,14 @@ class ReminderScheduler:
                 else:
                     when = f"in {cleaning['days']} days"
 
+                safe_name = _escape_markdown(cleaning['name'])
+                safe_desc = _escape_markdown(cleaning['description'])
+
                 message += (
-                    f"📍 *{cleaning['name']}*\n"
+                    f"📍 *{safe_name}*\n"
                     f"📅 {cleaning['date'].strftime('%A, %d %B %H:%M')}\n"
                     f"⏰ {when}\n"
-                    f"🧹 {cleaning['description']}\n\n"
+                    f"🧹 {safe_desc}\n\n"
                 )
 
             await self.bot.send_reminder(self.allowed_user_id, message)
@@ -283,9 +309,9 @@ class ReminderScheduler:
                 return
 
             street_name = parking.get('street_name', 'Unknown')
+            safe_street = _escape_markdown(street_name)
             next_cleaning_formatted = next_cleaning.strftime("%A, %d %B %Y")
 
-            # Build countdown message
             if days_until == 1:
                 countdown_msg = "⏳ *1 giorno rimasto*"
                 urgency_emoji = "⚠️"
@@ -295,7 +321,7 @@ class ReminderScheduler:
 
             message = (
                 f"{urgency_emoji} *Countdown Pulizia Strade*\n\n"
-                f"📍 {street_name}\n"
+                f"📍 {safe_street}\n"
                 f"📅 Prossima pulizia: {next_cleaning_formatted}\n\n"
                 f"{countdown_msg}"
             )
@@ -385,3 +411,37 @@ class ReminderScheduler:
 
         # No dates found, return first match
         return matching_streets[0]
+    
+    def _find_all_streets_by_name(self, street_name: str):
+        """Find all street entries matching a name (for streets with multiple cleaning days)"""
+        street_name_upper = street_name.upper()
+        matching_streets = []
+        for street in self.kml_parser.streets:
+            actual_name = street.cleaning_schedule.get('street_name', '')
+            if actual_name and street_name_upper in actual_name.upper():
+                matching_streets.append(street)
+        return matching_streets
+
+    @staticmethod
+    def _format_favorite_description(street_entries) -> str:
+        """Build a clean, Markdown-safe description from street schedule data"""
+        day_names_it = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']
+        schedules = []
+
+        for entry in street_entries:
+            sched = entry.cleaning_schedule
+            parts = []
+            if sched.get('day_of_week') is not None:
+                parts.append(day_names_it[sched['day_of_week']])
+            weeks = sched.get('weeks', [])
+            if weeks:
+                week_str = ", ".join([f"{w}°" for w in weeks])
+                parts.append(f"settimana {week_str}")
+            if sched.get('time_start') and sched.get('time_end'):
+                parts.append(f"{sched['time_start']}-{sched['time_end']}")
+            if sched.get('section'):
+                parts.append(f"({sched['section']})")
+            if parts:
+                schedules.append(" ".join(parts))
+
+        return " | ".join(schedules) if schedules else "Schedule unknown"
